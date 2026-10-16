@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>ChartLab — XAUUSD Replay</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#111b2d;--line:#24334a;--text:#e7edf7;--muted:#8fa2bd;--blue:#3478f6}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,Arial}
+header{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 12px;background:#101a2b;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}
+.brand{font-weight:800;margin-right:6px;color:#fff}.pill,button,select{background:#17243a;color:var(--text);border:1px solid #30415c;border-radius:8px;padding:8px 10px;font:inherit}
+button{cursor:pointer}button.primary{background:var(--blue);border-color:var(--blue)}button:disabled{opacity:.4;cursor:default}
+main{padding:10px;max-width:1500px;margin:auto}.toolbar{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:9px}
+.status{color:var(--muted);font-size:12px;margin-left:auto}
+#chart{height:min(58vh,560px);min-height:320px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#0b1220}
+.panel{margin-top:10px;padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+h2{font-size:15px;margin:0 0 10px}.replay{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.replay input{flex:1;min-width:140px}
+.note{color:var(--muted);font-size:12px;line-height:1.55}.stats{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);margin:8px 0}.stats b{color:var(--text)}
+@media(max-width:600px){header{position:static}main{padding:7px}#chart{height:53vh;min-height:300px}.status{width:100%;margin-left:0}}
+</style>
+</head>
+<body>
+<header><span class="brand">ChartLab</span><span class="pill">XAUUSD · Demo</span>
+<select id="tf" aria-label="Timeframe"><option value="1">1m</option><option value="5">5m</option><option value="15">15m</option><option value="30">30m</option><option value="60">1H</option><option value="240" selected>4H</option><option value="1440">1D</option><option value="10080">1W</option><option value="43200">1M</option></select>
+<select id="tz" aria-label="Timezone"><option value="Asia/Tashkent">UTC+5 · Toshkent</option><option value="UTC">UTC</option></select>
+<span class="status" id="clock">--:--:--</span></header>
+<main>
+<div class="toolbar"><button id="reset">Grafikni tiklash</button><button id="toggleReplay" class="primary">Replay rejimi</button><button id="loadDemo">Demo tarixni qayta yuklash</button><span class="status" id="feedStatus">Demo ma’lumotlar</span></div>
+<div id="chart"></div>
+<div class="panel">
+<h2>Bar Replay</h2>
+<div class="replay"><button id="back">◀ Orqaga</button><button id="step" class="primary">Sham +1 ▶</button><button id="play">▶ Avto</button><select id="speed" aria-label="Replay tezligi"><option value="1000">1×</option><option value="500">2×</option><option value="200">5×</option><option value="100">10×</option></select></div>
+<div class="replay" style="margin-top:10px"><label for="seek">Tarix bo‘ylab:</label><input id="seek" type="range" min="30" max="300" value="180"><span id="seekLabel">180 / 300</span></div>
+<div class="stats"><span>Ko‘rinayotgan shamlar: <b id="shown">--</b></span><span>Oxirgi yopilish: <b id="last">--</b></span><span>UTC+5 vaqt: <b id="barTime">--</b></span></div>
+</div>
+<div class="panel"><h2>Chizish va tahlil</h2>
+<div class="toolbar"><button id="horizontal">Gorizontal chiziq</button><button id="clearLines">Chiziqlarni tozalash</button><button id="showVol">Hajmni ko‘rsat/yashir</button></div>
+<p class="note">Bu hozircha ishlaydigan interfeys prototipi: grafik va Replay demo shamlar bilan ishlaydi. Demo narxlar haqiqiy bozor narxlari emas. Jonli XAUUSD narxlari, tarixiy ma’lumotlar va 1 sekundlik shamlar uchun ma’lumot provayderi/API kaliti va server ulanishi kerak. Ilovani telefonga o‘rnatish uchun ushbu faylni HTTPS saytga joylash va PWA sozlamalarini qo‘shish kerak.</p></div>
+</main>
+<script src="https://unpkg.com/lightweight-charts@4.2.2/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+(function(){
+const chartEl=document.getElementById('chart');
+const chart=LightweightCharts.createChart(chartEl,{layout:{background:{color:'#0b1220'},textColor:'#b7c5d9'},grid:{vertLines:{color:'#18253a'},horzLines:{color:'#18253a'}},rightPriceScale:{borderColor:'#26364d'},timeScale:{borderColor:'#26364d',timeVisible:true,secondsVisible:false},crosshair:{mode:0}});
+const candles=chart.addCandlestickSeries({upColor:'#18b89a',downColor:'#ef5364',borderUpColor:'#18b89a',borderDownColor:'#ef5364',wickUpColor:'#18b89a',wickDownColor:'#ef5364'});
+const volume=chart.addHistogramSeries({priceFormat:{type:'volume'},priceScaleId:'',scaleMargins:{top:.82,bottom:0}});
+let all=[],visible=180,playing=false,timer=null,lines=[],volumeOn=true;
+function makeData(){
+ let tf=Number(document.getElementById('tf').value), step=tf*60, now=Math.floor(Date.now()/1000/step)*step-300*step, p=4160;
+ all=[];
+ for(let i=0;i<300;i++){let o=p, drift=(Math.random()-.48)*8, c=Math.max(100,p+drift), h=Math.max(o,c)+Math.random()*4, l=Math.min(o,c)-Math.random()*4;
+ all.push({time:now+i*step,open:+o.toFixed(2),high:+h.toFixed(2),low:+l.toFixed(2),close:+c.toFixed(2),value:Math.round(50+Math.random()*200)});p=c;}
+ visible=180;document.getElementById('seek').max=all.length;document.getElementById('seek').value=visible;render();
+}
+function render(){let d=all.slice(0,visible);candles.setData(d);volume.setData(d.map(x=>({time:x.time,value:x.value,color:x.close>=x.open?'#167d70':'#a83c4b'})));volume.applyOptions({visible:volumeOn});document.getElementById('shown').textContent=d.length;let x=d[d.length-1];document.getElementById('last').textContent=x?x.close.toFixed(2):'--';document.getElementById('barTime').textContent=x?fmt(x.time):'--';document.getElementById('seekLabel').textContent=visible+' / '+all.length;document.getElementById('seek').value=visible;}
+function fmt(t){let z=document.getElementById('tz').value;return new Intl.DateTimeFormat('uz-UZ',{timeZone:z,dateStyle:'short',timeStyle:'medium'}).format(new Date(t*1000))}
+function stop(){playing=false;clearInterval(timer);document.getElementById('play').textContent='▶ Avto'}
+function step(n=1){visible=Math.max(1,Math.min(all.length,visible+n));render();if(visible>=all.length)stop()}
+document.getElementById('step').onclick=()=>step(1);document.getElementById('back').onclick=()=>step(-1);
+document.getElementById('play').onclick=()=>{if(playing){stop();return}playing=true;document.getElementById('play').textContent='Ⅱ Pauza';timer=setInterval(()=>step(1),Number(document.getElementById('speed').value))};
+document.getElementById('speed').onchange=()=>{if(playing){stop();document.getElementById('play').click()}};
+document.getElementById('seek').oninput=e=>{visible=Number(e.target.value);render()};
+document.getElementById('tf').onchange=()=>{stop();makeData()};document.getElementById('tz').onchange=render;
+document.getElementById('reset').onclick=()=>{visible=180;render();chart.timeScale().fitContent()};
+document.getElementById('toggleReplay').onclick=()=>{visible=Math.max(30,Math.min(visible,all.length));render()};
+document.getElementById('loadDemo').onclick=()=>{stop();makeData()};
+document.getElementById('showVol').onclick=()=>{volumeOn=!volumeOn;render()};
+document.getElementById('horizontal').onclick=()=>{let d=all[Math.max(0,visible-1)];if(d){let line=candles.createPriceLine({price:d.close,color:'#f2c14e',lineWidth:1,lineStyle:2,axisLabelVisible:true,title:'Daraja'});lines.push(line)}};
+document.getElementById('clearLines').onclick=()=>{lines.forEach(x=>candles.removePriceLine(x));lines=[]};
+function clock(){document.getElementById('clock').textContent=new Intl.DateTimeFormat('uz-UZ',{timeZone:document.getElementById('tz').value,hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date())}
+new ResizeObserver(()=>chart.applyOptions({width:chartEl.clientWidth,height:chartEl.clientHeight})).observe(chartEl);
+makeData();chart.timeScale().fitContent();clock();setInterval(clock,1000);
+})();
+</script>
+</body>
+</html>
